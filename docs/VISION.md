@@ -14,20 +14,16 @@ The player should feel like a multi-tasking genius. While they are actively buil
 4. **Endless Mathematical Depth:** The progression must last for months to map to a real-world study habit. This requires prestige mechanics, deep exponential scaling, and distinct paradigms of upgrades.
 5. **Milestone-Driven Engagement:** Clear goals and achievements give the player concrete targets beyond "buy the next generator". Milestones map game progress to study milestones, creating a visible record of growth.
 
-## Current State (Post v2 Build)
+## Roadmap & Vision Expansion
 
-### What's Working
-- **Advanced Core loop**: Multi-layer prestige (Epiphany, Enlightenment) provides months of progression.
-- **Strong SRS integration**: Gems, Frenzy, and Rating-aware rewards create a tight study-game loop.
-- **Automation Unlocked**: Enlightenment provides auto-clickers and auto-buyers, reducing late-game friction.
-- **Milestone System**: Players have concrete targets and celebrated achievements.
-- **Robust Architecture**: Extracted components and centralized state management in `useGameState`.
+While the core mechanical loop is solid, the game must evolve from a "spreadsheet simulator" into a visually engaging digital environment that ties deeply into the player's study habits, offering much deeper content to unlock.
 
-### What Needs Work
-- **Visual Stagnation**: Despite component extraction, the UI remains a static list. It lacks "juice" and visual evolution over time.
-- **Lack of "World"**: The game feels like a spreadsheet. There's no sense of place or exploration.
-- **No Consistency Incentives**: While single sessions are rewarded (Frenzy), there's no long-term reward for studying every day (Streaks).
-- **Static Content**: Once you unlock all generators, you're just waiting for numbers to go up. No dynamic events or mini-objectives.
+1. **Persistent Visual Growth ("The Mind Palace")**: The game must visually map the player's brain. Upgrades shouldn't just be list items; they are nodes in a massive, branching "Neural Pathway" tech tree. Prestiging should cause a massive visual explosion, providing a tangible reward to SRS-gated resources.
+2. **Rating-Driven Economy**: The game engine will parse exactly *how* the player rated their flashcards (Easy, Good, Hard, Again) to drop specific sub-currencies. A difficult card (`Hard`) drops "Focus Shards" for active play buffs, while a forgotten card relearned (`Again`) drops "Resilience Cores" for defensive stats. The struggle of learning becomes a resource.
+3. **Habitual Attachment ("Thought Construct")**: Instead of a dry "streak multiplier", the player hatches a digital companion (a Memory Engram). Its "hunger" can only be sated by completing daily FSRS queues. A well-fed construct provides massive global multipliers, driving daily consistency through emotional attachment.
+4. **Active Study Expeditions**: Upgrading from passive timers to active challenges. Expeditions will require completing a certain number of flashcards within a time limit to secure unique "Eureka Artifacts", giving intense, short-term focus goals.
+5. **Dynamic Eras & Lore**: Eras must fundamentally change game mechanics (from Biological neurons to Cybernetic hacking minigames) rather than just tweaking math, while uncovering "Memory Fragments" to provide a narrative incentive to push forward.
+
 
 ## Strategic Filtering Rule
 Any new feature proposed must answer the question: **"How does this make the player want to review more flashcards?"**

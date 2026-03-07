@@ -15,6 +15,8 @@ import EnlightenmentModal from './components/EnlightenmentModal';
 import EraAdvanceModal from './components/EraAdvanceModal';
 import ExpeditionPanel from './components/ExpeditionPanel';
 import ResourcePanel from './components/ResourcePanel';
+import ThoughtConstruct from './components/ThoughtConstruct';
+import NeuralMap from './components/NeuralMap';
 
 export default function App() {
     const state = useGameState();
@@ -119,8 +121,13 @@ export default function App() {
             <ResourcePanel
                 fragments={state.fragments}
                 insightGems={state.insightGems}
+                claritySparks={state.claritySparks}
+                focusShards={state.focusShards}
+                resilienceCores={state.resilienceCores}
                 fragmentFlash={state.fragmentFlash}
             />
+
+            <ThoughtConstruct satiation={state.constructSatiation} />
 
             <div className="space-y-1 mb-2">
                 <FrenzyBar stacks={state.frenzyStacks} />
@@ -188,47 +195,24 @@ export default function App() {
                 {activeTab === 'upgrades' ? (
                     <>
                         <h3 className="text-[10px] sm:text-xs font-black uppercase text-slate-500 mb-1 sm:mb-2 px-1 tracking-wider flex-shrink-0">Upgrades & Automation</h3>
-                        <div className="overflow-y-auto pr-1 space-y-2 flex-1 scrollbar-thin">
+
+                        <div className="flex-1 w-full min-h-[300px] mb-2 rounded-2xl overflow-hidden border border-slate-700/50">
+                            <NeuralMap
+                                fragments={state.fragments}
+                                ownedGenerators={state.generatorsArray}
+                                onBuyGenerator={state.buyWithSave((key) => state.buyGenerator(key))}
+                            />
+                        </div>
+
+                        <div className="overflow-y-auto pr-1 space-y-2 flex-shrink-0 max-h-[30vh] scrollbar-thin">
                             <UpgradeItem title="Better Focus" desc="+1 Base click power" cost={formatNumber(state.clickPowerCost)} costType="fragment" canAfford={state.fragments >= state.clickPowerCost} owned={state.clickPower - 1} onBuy={state.buyWithSave(state.buyClickPower)} icon="🎯" />
 
-                            {GENERATORS.map((gen, idx) => {
-                                // Data-driven generator loop! Check unlock condition.
-                                if (gen.unlockAfter && !(state.generatorsArray[gen.unlockAfter] > 0)) {
-                                    return null;
-                                }
-                                const cost = calcGeneratorCost(gen.baseCost, state.generatorsArray[gen.key] || 0, state.discountMult);
-
-                                let isAutoBuying = false;
-                                if (state.enlightenments >= 2) {
-                                    if (state.enlightenments >= 5) {
-                                        isAutoBuying = state.fragments >= cost;
-                                    } else {
-                                        isAutoBuying = state.fragments >= cost;
-                                    }
-                                }
-
-                                return (
-                                    <UpgradeItem
-                                        key={gen.key}
-                                        title={gen.name}
-                                        desc={gen.desc}
-                                        cost={formatNumber(cost)}
-                                        costType="fragment"
-                                        canAfford={state.fragments >= cost}
-                                        owned={state.generatorsArray[gen.key] || 0}
-                                        onBuy={state.buyWithSave(() => state.buyGenerator(gen.key))}
-                                        icon={gen.icon}
-                                        isAutoBuying={isAutoBuying}
-                                    />
-                                );
-                            })}
-
                             {/* Premium Gem Upgrades */}
-                            <UpgradeItem title="Insight Burst" desc={state.fragmentsPerSec > 0 ? `+${formatNumber(state.fragmentsPerSec * 120)} Fragments` : 'Need generators first'} cost={formatNumber(state.insightBurstCost)} costType="gem" canAfford={state.insightGems >= state.insightBurstCost && state.fragmentsPerSec > 0} owned={-1} onBuy={state.buyWithSave(state.buyInsightBurst)} icon="💥" isSpecial />
-                            <UpgradeItem title="Aura of Learning" desc="Global 2x Multiplier" cost={formatNumber(state.multiplierCost)} costType="gem" canAfford={state.insightGems >= state.multiplierCost} owned={state.globalMultiplier - 1} onBuy={state.buyWithSave(state.buyMultiplier)} icon="✨" isSpecial />
-                            <UpgradeItem title="Flashcard Synergy" desc="+1 Base Click Power" cost={formatNumber(state.synergyCost)} costType="gem" canAfford={state.insightGems >= state.synergyCost} owned={state.synergyLevel} onBuy={state.buyWithSave(state.buySynergy)} icon="⚡" isSpecial />
-                            <UpgradeItem title="Discount Aura" desc="-10% Fragment Costs" cost={formatNumber(state.discountCost)} costType="gem" canAfford={state.insightGems >= state.discountCost} owned={state.discountLevel} onBuy={state.buyWithSave(state.buyDiscount)} icon="🏷️" isSpecial />
-                            <UpgradeItem title="Golden Insight" desc="+5% Chance for +1 Gem/Review" cost={formatNumber(state.fortuneCost)} costType="gem" canAfford={state.insightGems >= state.fortuneCost} owned={state.fortuneLevel} onBuy={state.buyWithSave(state.buyFortune)} icon="🍀" isSpecial />
+                            <UpgradeItem title="Insight Burst" desc={state.fragmentsPerSec > 0 ? `+${formatNumber(state.fragmentsPerSec * 120)} Fragments` : 'Need generators first'} cost={formatNumber(state.insightBurstCost)} costType="shard" canAfford={state.focusShards >= state.insightBurstCost && state.fragmentsPerSec > 0} owned={-1} onBuy={state.buyWithSave(() => state.buyInsightBurst('shard'))} icon="💥" isSpecial />
+                            <UpgradeItem title="Aura of Learning" desc="Global 2x Multiplier" cost={formatNumber(state.multiplierCost)} costType="gem" canAfford={state.insightGems >= state.multiplierCost} owned={state.globalMultiplier - 1} onBuy={state.buyWithSave(() => state.buyMultiplier('gem'))} icon="✨" isSpecial />
+                            <UpgradeItem title="Flashcard Synergy" desc="+1 Base Click Power" cost={formatNumber(state.synergyCost)} costType="spark" canAfford={state.claritySparks >= state.synergyCost} owned={state.synergyLevel} onBuy={state.buyWithSave(() => state.buySynergy('spark'))} icon="⚡" isSpecial />
+                            <UpgradeItem title="Discount Aura" desc="-10% Fragment Costs" cost={formatNumber(state.discountCost)} costType="spark" canAfford={state.claritySparks >= state.discountCost} owned={state.discountLevel} onBuy={state.buyWithSave(() => state.buyDiscount('spark'))} icon="🏷️" isSpecial />
+                            <UpgradeItem title="Golden Insight" desc="+5% Chance for +1 Gem/Review" cost={formatNumber(state.fortuneCost)} costType="shard" canAfford={state.focusShards >= state.fortuneCost} owned={state.fortuneLevel} onBuy={state.buyWithSave(() => state.buyFortune('shard'))} icon="🍀" isSpecial />
 
                             {/* Prestige & Enlightenment */}
                             {state.canEnlighten && (
@@ -256,9 +240,13 @@ export default function App() {
                     <ExpeditionPanel
                         activeId={state.activeExpeditionId}
                         progress={state.expeditionProgress}
+                        activeTarget={state.activeExpeditionTarget}
+                        activeEndTime={state.activeExpeditionEndTime}
                         completed={state.completedExpeditions}
+                        relics={state.relics}
+                        fragments={state.fragments}
                         onStart={state.handleStartExpedition}
-                        era={currentEra}
+                        era={state.era}
                     />
                 )}
             </div>
