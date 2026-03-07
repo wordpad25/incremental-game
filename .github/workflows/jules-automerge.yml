@@ -1,0 +1,29 @@
+name: Auto-merge Jules PRs
+
+on:
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - ready_for_review
+
+permissions:
+  pull-requests: write
+  contents: write
+
+jobs:
+  automerge:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check and Auto-merge
+        if: startsWith(github.actor, 'google-jules') || contains(github.event.pull_request.title, 'Jules') || contains(github.event.pull_request.head.ref, 'jules') || contains(github.event.pull_request.body, 'jules')
+        env:
+          PR_URL: ${{github.event.pull_request.html_url}}
+          GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
+        run: |
+          # Try to approve the PR if branch protection requires it (may fail if actor is the PR author, which is fine)
+          gh pr review --approve "$PR_URL" || true
+          
+          # Enable auto-merge (squash or merge)
+          gh pr merge --auto --squash "$PR_URL" || gh pr merge --auto --merge "$PR_URL"
