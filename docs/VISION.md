@@ -28,3 +28,6 @@ While the core mechanical loop is solid, the game must evolve from a "spreadshee
 ## Strategic Filtering Rule
 Any new feature proposed must answer the question: **"How does this make the player want to review more flashcards?"**
 *If an idea only encourages leaving the browser open without studying, it must be redesigned or discarded.*
+
+## Latest Brainstorms
+*   Read our latest thoughts on expanding the endgame and balancing pacing here: [BRAINSTORM_EXPANSION.md](./BRAINSTORM_EXPANSION.md)

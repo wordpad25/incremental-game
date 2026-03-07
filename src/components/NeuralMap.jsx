@@ -54,7 +54,8 @@ export default function NeuralMap({ fragments, ownedGenerators, onBuyGenerator }
         if (!node.required || node.required.length === 0) return true;
         // Node is unlocked if player owns at least 1 of EVERY required generator
         return node.required.every(reqId => {
-            const requiredGen = GENERATORS.find(g => 'gen_' + g.id.toLowerCase() === reqId);
+            const reqKey = reqId.replace('gen_', '').toLowerCase();
+            const requiredGen = GENERATORS.find(g => g.key.toLowerCase() === reqKey);
             if (!requiredGen) return false;
             return (ownedGenerators[requiredGen.key] || 0) > 0;
         });
@@ -106,9 +107,9 @@ export default function NeuralMap({ fragments, ownedGenerators, onBuyGenerator }
 
                 {/* Render Nodes */}
                 {NEURAL_NODES.map(node => {
-                    // Match gen_name format back to the GENERATORS id
-                    const genKey = node.id.replace('gen_', '');
-                    const generator = GENERATORS.find(g => g.id.toLowerCase() === genKey);
+                    // Match gen_name format back to the GENERATORS key
+                    const genKey = node.id.replace('gen_', '').toLowerCase();
+                    const generator = GENERATORS.find(g => g.key.toLowerCase() === genKey);
 
                     if (!generator) return null;
 
