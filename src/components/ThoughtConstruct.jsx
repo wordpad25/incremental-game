@@ -1,16 +1,23 @@
 import React from 'react';
 
-export default function ThoughtConstruct({ satiation }) {
+export default function ThoughtConstruct({ satiation, evolution = 0, growthPoints = 0 }) {
     // Satiation is 0-15
     const isStarving = satiation <= 5;
     const isHungry = satiation > 5 && satiation < 10;
     const isSated = satiation >= 10;
+
+    const EVOLUTION_NAMES = ['Wisp', 'Orb', 'Entity', 'Avatar'];
+    const EVOLUTION_ICONS = ['☁️', '🔮', '✨', '👑'];
 
     let constructColor = 'from-blue-400 to-indigo-600';
     let ringColor = 'border-blue-500/30';
     let shadowColor = 'shadow-[0_0_20px_rgba(59,130,246,0.3)]';
     let pulseAnim = 'animate-[pulse_3s_ease-in-out_infinite]';
     let face = '◡‿◡';
+
+    if (evolution >= 1) constructColor = 'from-purple-400 to-blue-600';
+    if (evolution >= 2) constructColor = 'from-indigo-400 to-purple-800';
+    if (evolution >= 3) constructColor = 'from-yellow-400 to-orange-600';
 
     if (isStarving) {
         constructColor = 'from-red-600 to-red-900';
@@ -25,7 +32,7 @@ export default function ThoughtConstruct({ satiation }) {
         pulseAnim = 'animate-[pulse_2s_ease-in-out_infinite]';
         face = '•_•';
     } else if (isSated) {
-        constructColor = 'from-emerald-400 to-teal-600';
+        if (evolution === 0) constructColor = 'from-emerald-400 to-teal-600';
         ringColor = 'border-emerald-400/50';
         shadowColor = 'shadow-[0_0_30px_rgba(52,211,153,0.5)]';
         pulseAnim = 'animate-bounce';
@@ -39,6 +46,7 @@ export default function ThoughtConstruct({ satiation }) {
         <div className="flex items-center gap-3 bg-slate-900/50 p-2 rounded-xl border border-slate-800 backdrop-blur mb-2 flex-shrink-0">
             {/* The Orb */}
             <div className={`relative w-10 h-10 rounded-full bg-gradient-to-br ${constructColor} ${shadowColor} border-2 ${ringColor} flex items-center justify-center ${pulseAnim}`}>
+                <div className="absolute -top-1 -left-1 text-[10px]">{EVOLUTION_ICONS[evolution]}</div>
                 <span className="text-[10px] font-bold text-white/90 drop-shadow-md tracking-tighter">
                     {face}
                 </span>
@@ -55,7 +63,9 @@ export default function ThoughtConstruct({ satiation }) {
             {/* Satiation Readout */}
             <div className="flex-1">
                 <div className="flex justify-between items-baseline mb-1">
-                    <span className="text-[10px] font-black uppercase text-slate-300 tracking-wider">Memory Engram</span>
+                    <span className="text-[10px] font-black uppercase text-slate-300 tracking-wider">
+                        {EVOLUTION_NAMES[evolution]} Construct
+                    </span>
                     <span className={`text-[9px] font-bold ${isStarving ? 'text-red-400' : isHungry ? 'text-amber-400' : 'text-emerald-400'}`}>
                         {isStarving ? 'STARVING' : isHungry ? 'HUNGRY' : 'SATED'}
                     </span>
@@ -71,8 +81,8 @@ export default function ThoughtConstruct({ satiation }) {
                     ))}
                 </div>
                 <div className="text-[8px] text-slate-500 mt-1 flex justify-between">
-                    <span>Needs Cards</span>
-                    <span>Max Buffs</span>
+                    <span>Growth: {growthPoints} pts</span>
+                    <span>Max Buffs {evolution > 0 ? `+${evolution * 10}%` : ''}</span>
                 </div>
             </div>
 

@@ -12,16 +12,38 @@ export const GENERATORS = [
     { key: 'singularities', name: 'Singularity', icon: '♾️', desc: '+1M Fragments/sec', baseCost: 10000000, production: 1000000, unlockAfter: 'cosmicEngines' },
 ];
 
+export const SUPPORT_NODES = [
+    { key: 'coolingSystems', parentKey: 'datacenters', name: 'Cooling Systems', icon: '❄️', desc: 'Datacenters production x2', baseCost: 50000, multiplier: 2 },
+    { key: 'ethicsProtocol', parentKey: 'quantumAI', name: 'Ethics Protocol', icon: '⚖️', desc: 'Quantum AI production x2', baseCost: 500000, multiplier: 2 },
+];
+
 export const COST_GROWTH = 1.15;
+export const SOFT_CAP_THRESHOLD = 25;
+export const SOFT_CAP_GROWTH = 1.50;
 
 export function calcGeneratorCost(baseCost, owned, discountMult) {
-    return Math.floor(baseCost * Math.pow(COST_GROWTH, owned) * discountMult);
+    if (owned < SOFT_CAP_THRESHOLD) {
+        return Math.floor(baseCost * Math.pow(COST_GROWTH, owned) * discountMult);
+    } else {
+        // Apply soft cap growth for levels above the threshold
+        const baseAtCap = baseCost * Math.pow(COST_GROWTH, SOFT_CAP_THRESHOLD);
+        return Math.floor(baseAtCap * Math.pow(SOFT_CAP_GROWTH, owned - SOFT_CAP_THRESHOLD) * discountMult);
+    }
 }
 
-export function calcTotalProduction(generators) {
+export function calcTotalProduction(generators, supportNodes = {}) {
     let total = 0;
     for (const gen of GENERATORS) {
-        total += (generators[gen.key] || 0) * gen.production;
+        let genProd = (generators[gen.key] || 0) * gen.production;
+
+        // Apply support node multipliers
+        for (const support of SUPPORT_NODES) {
+            if (support.parentKey === gen.key && supportNodes[support.key]) {
+                genProd *= support.multiplier;
+            }
+        }
+
+        total += genProd;
     }
     return total;
 }

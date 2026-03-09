@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { loadStateFromAPI, saveStateToAPI } from '../utils/api';
 import { MILESTONES } from '../data/milestones';
-import { GENERATORS, calcGeneratorCost, COST_GROWTH } from '../data/generators';
+import { GENERATORS, SUPPORT_NODES, calcGeneratorCost, COST_GROWTH } from '../data/generators';
 import { ERAS, getNextEra } from '../data/eras';
 import { EXPEDITIONS } from '../data/expeditions';
+import { RELICS, getRelicEffect } from '../data/relics';
+import { CONSUMABLES } from '../data/consumables';
 
 export const AUTOSAVE_INTERVAL_MS = 60000;
 export const OFFLINE_EFFICIENCY = 0.5;
@@ -22,12 +24,18 @@ export function useGameState() {
     // Core resources
     const [fragments, setFragments] = useState(0);
     const [insightGems, setInsightGems] = useState(0);
+    const [claritySparks, setClaritySparks] = useState(0);
+    const [focusShards, setFocusShards] = useState(0);
+    const [resilienceCores, setResilienceCores] = useState(0);
     const [clickPower, setClickPower] = useState(1);
     const [globalMultiplier, setGlobalMultiplier] = useState(1);
 
     // Generators map to state
     const [generatorsArray, setGeneratorsArray] = useState(
         GENERATORS.reduce((acc, g) => ({ ...acc, [g.key]: 0 }), {})
+    );
+    const [supportNodesArray, setSupportNodesArray] = useState(
+        SUPPORT_NODES.reduce((acc, s) => ({ ...acc, [s.key]: 0 }), {})
     );
 
     // Gem upgrades
@@ -46,6 +54,12 @@ export function useGameState() {
     // Enlightenment (Prestige Layer 2)
     const [enlightenments, setEnlightenments] = useState(0);
 
+    // Thought Construct Evolution
+    const [constructSatiation, setConstructSatiation] = useState(15);
+    const [lastFedTimestamp, setLastFedTimestamp] = useState(Date.now());
+    const [constructGrowthPoints, setConstructGrowthPoints] = useState(0);
+    const [constructEvolution, setConstructEvolution] = useState(0); // 0: Wisp, 1: Orb, 2: Entity, 3: Avatar
+
     // Eras
     const [era, setEra] = useState(1);
     const [pendingEraAdvance, setPendingEraAdvance] = useState(null);
@@ -62,7 +76,7 @@ export function useGameState() {
     const [activeExpeditionTarget, setActiveExpeditionTarget] = useState(0);
     const [activeExpeditionEndTime, setActiveExpeditionEndTime] = useState(null);
     const [completedExpeditions, setCompletedExpeditions] = useState([]);
-    const [relics, setRelics] = useState([]);
+    const [relics, setRelics] = useState([]); // Array of { id, level }
 
     // Streaks & Combos
     const [streak, setStreak] = useState(0);
@@ -75,23 +89,29 @@ export function useGameState() {
     const [milestoneBannerQueue, setMilestoneBannerQueue] = useState([]);
     const [activeBanner, setActiveBanner] = useState(null);
 
+    // Active Buffs (Consumables)
+    const [activeBuffs, setActiveBuffs] = useState({}); // { id: expiryTimestamp }
+
     // Ref for interval access
     const stateRef = useRef({});
     useEffect(() => {
         stateRef.current = {
             fragments, insightGems, claritySparks, focusShards, resilienceCores, clickPower, globalMultiplier,
             generators: generatorsArray,
+            supportNodes: supportNodesArray,
             synergyLevel, discountLevel, fortuneLevel,
             frenzyStacks, frenzyDecayAt,
             epiphanies, totalResets,
             enlightenments,
             constructSatiation, lastFedTimestamp,
+            constructGrowthPoints, constructEvolution,
             totalCardsReviewed, totalFragmentsEarned, totalGemsEarned, totalClicks,
             completedMilestones,
             era,
             activeExpeditionId, expeditionProgress, activeExpeditionTarget, activeExpeditionEndTime, completedExpeditions,
             relics,
             streak, lastStudyDate, comboCount, focusBurstTime,
+            activeBuffs,
         };
     });
 
@@ -106,13 +126,48 @@ export function useGameState() {
     }, [activeBanner, milestoneBannerQueue]);
 
     // ─── Shared Calculations ─────────────────────────────────
+    function isBuffActive(buffId, stateSnapshot) {
+        const active = stateSnapshot ? stateSnapshot.activeBuffs : activeBuffs;
+        if (!active || !active[buffId]) return false;
+        return Date.now() < active[buffId];
+    }
+
+    function getRelicLevel(relicsArray, relicId) {
+        if (!Array.isArray(relicsArray)) return 0;
+        const owned = relicsArray.filter(r => r && typeof r === 'object' ? r.id === relicId : r === relicId);
+        if (owned.length === 0) return 0;
+        return Math.max(...owned.map(r => typeof r === 'object' ? (r.level || 1) : 1));
+    }
+
     function getCalcFragmentsPerSec(stateSnapshot) {
         const g = stateSnapshot.generators || {};
-        const base = GENERATORS.reduce((sum, gen) => sum + (g[gen.key] || 0) * gen.production, 0);
+        const s = stateSnapshot.supportNodes || {};
+        const relicsArray = stateSnapshot.relics || [];
+
+        const base = GENERATORS.reduce((sum, gen) => {
+            let genProd = (g[gen.key] || 0) * gen.production;
+            for (const support of SUPPORT_NODES) {
+                if (support.parentKey === gen.key && s[support.key]) {
+                    genProd *= support.multiplier;
+                }
+            }
+            return sum + genProd;
+        }, 0);
+
         const epiphanyMult = 1 + ((stateSnapshot.epiphanies || 0) * 0.5);
         const enlightenMult = Math.pow(2, stateSnapshot.enlightenments || 0);
-        const constructSatiationMult = (stateSnapshot.constructSatiation || 0) >= 10 ? 1.5 : 1;
-        return base * (stateSnapshot.globalMultiplier || 1) * epiphanyMult * enlightenMult * constructSatiationMult;
+
+        const evolutionSatedBonus = [1.5, 1.6, 1.75, 2.0][stateSnapshot.constructEvolution] || 1.5;
+        const constructSatiationMult = (stateSnapshot.constructSatiation || 0) >= 10 ? evolutionSatedBonus : 1;
+
+        const voyagerLevel = getRelicLevel(relicsArray, 'relic_voyager');
+        const relicGlobalMult = voyagerLevel > 0 ? (1 + getRelicEffect('relic_voyager', voyagerLevel)) : 1.0;
+
+        // Consumable Buffs
+        let buffMult = 1;
+        if (isBuffActive('fragment_surge', stateSnapshot)) buffMult *= 10;
+
+        return base * (stateSnapshot.globalMultiplier || 1) * epiphanyMult * enlightenMult * constructSatiationMult * relicGlobalMult * buffMult;
     }
 
     // ─── Check Milestones ────────────────────────────────────
@@ -166,6 +221,7 @@ export function useGameState() {
         clickPower: stateRef.current.clickPower,
         globalMultiplier: stateRef.current.globalMultiplier,
         generators: stateRef.current.generators,
+        supportNodes: stateRef.current.supportNodes,
         gemUpgrades: {
             synergyLevel: stateRef.current.synergyLevel,
             discountLevel: stateRef.current.discountLevel,
@@ -186,6 +242,8 @@ export function useGameState() {
         construct: {
             satiation: stateRef.current.constructSatiation,
             lastFed: stateRef.current.lastFedTimestamp,
+            growthPoints: stateRef.current.constructGrowthPoints,
+            evolution: stateRef.current.constructEvolution,
         },
         expeditions: {
             activeId: stateRef.current.activeExpeditionId,
@@ -207,6 +265,7 @@ export function useGameState() {
         },
         milestones: stateRef.current.completedMilestones,
         fragmentFlash: stateRef.current.fragmentFlash,
+        activeBuffs: stateRef.current.activeBuffs,
     }), []);
 
     // ─── Save ────────────────────────────────────────────────
@@ -234,6 +293,13 @@ export function useGameState() {
         }
         setGeneratorsArray(newGens);
 
+        const loadedSup = s.supportNodes || {};
+        const newSups = {};
+        for (const sup of SUPPORT_NODES) {
+            newSups[sup.key] = loadedSup[sup.key] ?? 0;
+        }
+        setSupportNodesArray(newSups);
+
         const gu = s.gemUpgrades || {};
         setSynergyLevel(gu.synergyLevel ?? 0);
         setDiscountLevel(gu.discountLevel ?? 0);
@@ -260,6 +326,8 @@ export function useGameState() {
         const c = s.construct || {};
         setConstructSatiation(c.satiation ?? 15);
         setLastFedTimestamp(c.lastFed ?? Date.now());
+        setConstructGrowthPoints(c.growthPoints ?? 0);
+        setConstructEvolution(c.evolution ?? 0);
 
         const st = s.stats || {};
         setTotalCardsReviewed(st.totalCardsReviewed ?? 0);
@@ -269,6 +337,7 @@ export function useGameState() {
 
         // Milestones
         setCompletedMilestones(s.milestones ?? {});
+        setActiveBuffs(s.activeBuffs ?? {});
 
         const ex = s.expeditions || {};
         setActiveExpeditionId(ex.activeId ?? null);
@@ -314,20 +383,43 @@ export function useGameState() {
                 // Decay Thought Construct
                 let updatedSatiation = saved.construct?.satiation ?? 15;
                 let lastFed = saved.construct?.lastFed ?? now;
+                let growthPoints = saved.construct?.growthPoints ?? 0;
+                let evolution = saved.construct?.evolution ?? 0;
                 let missedDays = 0;
 
                 if (lastFed) {
                     const timeSinceFed = now - lastFed;
                     const daysSinceFed = Math.floor(timeSinceFed / 86400000); // 86,400,000 ms in a day
                     if (daysSinceFed > 0) {
-                        offlineSatiationLost = daysSinceFed * 5;
+                        // Streak Shield logic
+                        const activeShield = saved.activeBuffs?.['streak_shield'] && saved.activeBuffs['streak_shield'] > now;
+
+                        if (activeShield) {
+                            offlineSatiationLost = 0;
+                        } else {
+                            offlineSatiationLost = daysSinceFed * 5;
+                        }
                         updatedSatiation = Math.max(0, updatedSatiation - offlineSatiationLost);
                         missedDays = daysSinceFed;
+
+                        // Earn growth points for each sated day (satiation was sated during those days?)
+                        // Simple logic: if they were sated when they left, they get 1 point?
+                        // Actually, let's just give 1 point if they were sated and it's been a day.
+                        if (saved.construct?.satiation >= 10) {
+                            growthPoints += 1;
+                        }
+
+                        // Check for Evolution
+                        if (growthPoints >= 90) evolution = 3;
+                        else if (growthPoints >= 30) evolution = 2;
+                        else if (growthPoints >= 7) evolution = 1;
                     }
                 }
                 updatedSavedState.construct = {
                     satiation: updatedSatiation,
-                    lastFed: lastFed, // lastFedTimestamp is not updated by decay, only by feeding
+                    lastFed: lastFed,
+                    growthPoints: growthPoints,
+                    evolution: evolution
                 };
 
                 if (timeDiffMs > 60000) { // More than 1 minute offline
@@ -350,8 +442,9 @@ export function useGameState() {
                         const expeditionBonus = saved.expeditions.completed.length > 0 ? (saved.expeditions.completed.length * 0.1) + 1 : 1;
                         finalOfflineRate *= expeditionBonus;
                     }
-                    if (saved.relics?.includes('relic_voyager')) {
-                        finalOfflineRate *= 1.5;
+                    const voyagerLevel = getRelicLevel(saved.relics || [], 'relic_voyager');
+                    if (voyagerLevel > 0) {
+                        finalOfflineRate *= (1 + getRelicEffect('relic_voyager', voyagerLevel));
                     }
 
                     offlineFragments = Math.floor(finalOfflineRate * offlineSeconds);
@@ -422,24 +515,25 @@ export function useGameState() {
     // ─── SRS event ───────────────────────────────────────────
     useEffect(() => {
         const handleCardReviewed = (event) => {
-            const { globalMultiplier, fortuneLevel, frenzyStacks, epiphanies, enlightenments, completedExpeditions, constructSatiation, claritySparks, focusShards, resilienceCores, activeExpeditionId, activeExpeditionTarget, activeExpeditionEndTime } = stateRef.current;
+            const s = stateRef.current;
             const rating = event?.detail?.rating ?? 3; // Default to Good if missing
 
             const RATING_MULTIPLIERS = { 1: 0.5, 2: 0.75, 3: 1.0, 4: 1.5 };
             const ratingMult = RATING_MULTIPLIERS[rating] ?? 1.0;
 
             // General Insight Gems logic
-            let baseGemChance = (fortuneLevel * 0.05);
-            if (completedExpeditions.some(id => id === 'exp_rosetta')) baseGemChance += 0.05;
+            let baseGemChance = (s.fortuneLevel * 0.05);
+            const rosettaLevel = getRelicLevel(s.relics, 'relic_rosetta');
+            if (rosettaLevel > 0) baseGemChance += getRelicEffect('relic_rosetta', rosettaLevel);
 
             // Apply Construct satiation bonus to gem chance
-            const constructGemBonus = constructSatiation >= 10 ? 1.5 : 1;
+            const constructGemBonus = s.constructSatiation >= 10 ? 1.5 : 1;
             baseGemChance *= constructGemBonus;
 
             let gemAmount = 0;
             if (Math.random() < baseGemChance) {
                 gemAmount = 1;
-                if (enlightenments >= 4) gemAmount += 2;
+                if (s.enlightenments >= 4) gemAmount += 2;
             }
             if (gemAmount > 0) {
                 setInsightGems(prev => prev + gemAmount);
@@ -458,21 +552,25 @@ export function useGameState() {
             if (cores > 0) setResilienceCores(prev => prev + cores);
 
             // Expedition Progress
-            if (activeExpeditionId && activeExpeditionEndTime && Date.now() < activeExpeditionEndTime) {
-                const newProgress = expeditionProgress + 1;
+            if (s.activeExpeditionId && s.activeExpeditionEndTime && Date.now() < s.activeExpeditionEndTime) {
+                const newProgress = s.expeditionProgress + 1;
 
-                if (newProgress >= activeExpeditionTarget) {
+                if (newProgress >= s.activeExpeditionTarget) {
                     // Win condition
-                    setCompletedExpeditions(prev => [...prev, activeExpeditionId]);
+                    setCompletedExpeditions(prev => [...prev, s.activeExpeditionId]);
 
                     // Map old expedition IDs to new relics for now
                     let relicId = '';
-                    if (activeExpeditionId === 'exp_rosetta') relicId = 'relic_rosetta';
-                    if (activeExpeditionId === 'exp_silk_road') relicId = 'relic_hourglass';
-                    if (activeExpeditionId === 'exp_apollo') relicId = 'relic_prism';
-                    if (activeExpeditionId === 'exp_voyager') relicId = 'relic_voyager';
+                    if (s.activeExpeditionId === 'exp_rosetta') relicId = 'relic_rosetta';
+                    if (s.activeExpeditionId === 'exp_silk_road') relicId = 'relic_hourglass';
+                    if (s.activeExpeditionId === 'exp_apollo') relicId = 'relic_prism';
+                    if (s.activeExpeditionId === 'exp_voyager') relicId = 'relic_voyager';
 
-                    if (relicId) setRelics(prev => [...prev, relicId]);
+                    if (relicId) {
+                        setRelics(prev => {
+                            return [...prev, { id: relicId, level: 1 }];
+                        });
+                    }
 
                     setActiveExpeditionId(null);
                     setExpeditionProgress(0);
@@ -499,30 +597,39 @@ export function useGameState() {
 
             // Update Streak
             const today = new Date().toISOString().split('T')[0];
-            if (lastStudyDate !== today) {
+            if (s.lastStudyDate !== today) {
                 setStreak(prev => prev + 1);
                 setLastStudyDate(today);
             }
 
-            const epiphanyMult = 1 + (epiphanies * 0.5);
-            const enlightenMult = Math.pow(2, enlightenments);
-            const frenzyMult = 1 + (frenzyStacks * FRENZY_BONUS_PER_STACK);
-            const expGlobalMult = completedExpeditions.some(id => id === 'exp_voyager') ? 1.5 : 1.0;
-            const constructSatiationMult = constructSatiation >= 10 ? 1.5 : 1; // Construct bonus to fragments
-            const burstAmount = 10 * globalMultiplier * expGlobalMult * frenzyMult * epiphanyMult * enlightenMult * ratingMult * constructSatiationMult;
+            const epiphanyMult = 1 + (s.epiphanies * 0.5);
+            const enlightenMult = Math.pow(2, s.enlightenments);
+            const frenzyMult = 1 + (s.frenzyStacks * FRENZY_BONUS_PER_STACK);
+
+            const voyagerLevel = getRelicLevel(s.relics, 'relic_voyager');
+            const relicGlobalMult = voyagerLevel > 0 ? (1 + getRelicEffect('relic_voyager', voyagerLevel)) : 1.0;
+
+            const evolutionSatedBonus = [1.5, 1.6, 1.75, 2.0][s.constructEvolution] || 1.5;
+            const constructSatiationMult = s.constructSatiation >= 10 ? evolutionSatedBonus : 1;
+            const evolutionMult = [1, 1.1, 1.25, 1.5][s.constructEvolution] || 1;
+
+            const burstAmount = 10 * s.globalMultiplier * relicGlobalMult * frenzyMult * epiphanyMult * enlightenMult * ratingMult * constructSatiationMult * evolutionMult;
             setFragments(prev => prev + burstAmount);
             setTotalFragmentsEarned(prev => prev + burstAmount);
             setTotalCardsReviewed(prev => prev + 1);
 
             const frenzyStacksToAdd = rating === 4 ? 2 : 1;
             setFrenzyStacks(prev => Math.min(prev + frenzyStacksToAdd, FRENZY_MAX_STACKS));
-            setFrenzyDecayAt(Date.now() + FRENZY_DECAY_MS);
+
+            // Evolution bonus: slower decay
+            const evolutionDecayBonus = [1, 1.2, 1.5, 2][s.constructEvolution] || 1;
+            setFrenzyDecayAt(Date.now() + (FRENZY_DECAY_MS * evolutionDecayBonus));
 
             const el = document.getElementById('gem-container');
             if (el) { el.classList.remove('animate-pulse'); void el.offsetWidth; el.classList.add('animate-pulse'); }
 
             // Check for Era advancement
-            const next = getNextEra(stateRef.current.era, getCalcFragmentsPerSec(stateRef.current), stateRef.current.totalCardsReviewed + 1);
+            const next = getNextEra(s.era, getCalcFragmentsPerSec(s), s.totalCardsReviewed + 1);
             if (next && !pendingEraAdvance) {
                 setPendingEraAdvance(next);
             }
@@ -531,7 +638,7 @@ export function useGameState() {
         };
         window.addEventListener('flashquest:card-reviewed', handleCardReviewed);
         return () => window.removeEventListener('flashquest:card-reviewed', handleCardReviewed);
-    }, [checkMilestones, lastStudyDate, activeExpeditionId, pendingEraAdvance, expeditionProgress, activeExpeditionTarget, activeExpeditionEndTime]);
+    }, [checkMilestones, pendingEraAdvance]);
 
     // ─── Active Expedition Timer ─────────────────────────────
     useEffect(() => {
@@ -562,16 +669,21 @@ export function useGameState() {
                 setFrenzyStacks(prev => {
                     const next = prev - 1;
                     if (next <= 0) { setFrenzyDecayAt(null); return 0; }
-                    setFrenzyDecayAt(Date.now() + FRENZY_DECAY_MS);
+                    const evolutionDecayBonus = [1, 1.2, 1.5, 2][s.constructEvolution] || 1;
+                    setFrenzyDecayAt(Date.now() + (FRENZY_DECAY_MS * evolutionDecayBonus));
                     return next;
                 });
             }
 
             const fps = getCalcFragmentsPerSec(s);
             const frenzyMultiplier = 1 + (s.frenzyStacks * FRENZY_BONUS_PER_STACK);
-            const expGlobalMult = s.completedExpeditions.some(id => id === 'exp_voyager') ? 1.5 : 1.0;
-            const constructSatiationMult = s.constructSatiation >= 10 ? 1.5 : 1;
-            const generated = fps * frenzyMultiplier * expGlobalMult * constructSatiationMult;
+            // Multipliers are already inside getCalcFragmentsPerSec, but frenzy and some others might be applied on top if FPS is base.
+            // Wait, getCalcFragmentsPerSec already includes globalMultiplier, epiphany, enlighten, satiation, and surge.
+            // It DOES NOT include frenzyMultiplier or relicGlobalMult (wait, I just added relicGlobalMult to it).
+            // Let's check getCalcFragmentsPerSec again.
+            // It returns: base * globalMult * epiphanyMult * enlightenMult * constructSatiationMult * relicGlobalMult * buffMult
+            // So generated should just be fps * frenzyMultiplier.
+            const generated = fps * frenzyMultiplier;
 
             if (generated > 0) {
                 setFragments(prev => prev + generated);
@@ -589,8 +701,10 @@ export function useGameState() {
                 const eMult = Math.pow(2, s.enlightenments);
                 const epMult = 1 + (s.epiphanies * 0.5);
                 const clickRate = s.enlightenments >= 3 ? 5 : 1;
-                const expGlobalMult = s.completedExpeditions.some(id => id === 'exp_voyager') ? 1.5 : 1.0;
-                const expClickMult = s.completedExpeditions.some(id => id === 'exp_apollo') ? 1.2 : 1.0;
+                const voyagerLevel = getRelicLevel(s.relics || [], 'relic_voyager');
+                const expGlobalMult = voyagerLevel > 0 ? (1 + getRelicEffect('relic_voyager', voyagerLevel)) : 1.0;
+                const hourglassLevel = getRelicLevel(s.relics || [], 'relic_hourglass');
+                const expClickMult = hourglassLevel > 0 ? (1 + getRelicEffect('relic_hourglass', hourglassLevel)) : 1.0;
                 const autoClickVal = clickPower * s.globalMultiplier * expGlobalMult * frenzyMultiplier * epMult * eMult * clickRate * expClickMult;
 
                 setFragments(prev => prev + autoClickVal);
@@ -626,8 +740,20 @@ export function useGameState() {
     }, [checkMilestones]);
 
     // ─── Derived Math ────────────────────────────────────────
-    const expDiscount = completedExpeditions.some(id => id === 'exp_silk_road') ? 0.95 : 1.0;
-    const discountMult = Math.pow(0.9, discountLevel) * expDiscount;
+    const hourglassLevel = getRelicLevel(relics, 'relic_hourglass');
+    const relicClickMult = hourglassLevel > 0 ? (1 + getRelicEffect('relic_hourglass', hourglassLevel)) : 1.0;
+
+    const silkRoadLevel = getRelicLevel(relics, 'relic_silk_road'); // Wait, Silk Road relic id is usually relic_hourglass?
+    // In handleCardReviewed, Silk Road expedition gives relic_hourglass.
+    // Let's stick to getRelicLevel(relics, 'relic_hourglass') for discount too if that's what it was.
+    // Actually Silk Road should probably be its own.
+    // Checking expeditions.js...
+    // Rosetta -> relic_rosetta
+    // Silk Road -> relic_hourglass (Wait, that's what I wrote in handleCardReviewed)
+    // Let's just use whatever is in handleCardReviewed for now.
+    const relicDiscount = hourglassLevel > 0 ? 0.95 : 1.0;
+
+    const discountMult = Math.pow(0.9, discountLevel) * relicDiscount;
     const clickPowerCost = Math.floor((50 * Math.pow(1.5, clickPower - 1)) * discountMult);
     const multiplierCost = Math.floor(2 * Math.pow(1.5, globalMultiplier - 1));
     const synergyCost = Math.floor(2 * Math.pow(1.35, synergyLevel));
@@ -639,17 +765,19 @@ export function useGameState() {
     const enlightenMult = Math.pow(2, enlightenments);
     const frenzyMultiplier = 1 + (frenzyStacks * FRENZY_BONUS_PER_STACK);
 
-    const expClickMult = completedExpeditions.some(id => id === 'exp_apollo') ? 1.2 : 1.0;
-    const baseClick = (clickPower + synergyLevel) * expClickMult;
+    const evolutionClickBonus = [0, 5, 20, 100][constructEvolution] || 0;
+    const baseClick = (clickPower + synergyLevel + evolutionClickBonus) * relicClickMult;
 
-    const expGlobalMult = completedExpeditions.some(id => id === 'exp_voyager') ? 1.5 : 1.0;
+    const voyagerLevel = getRelicLevel(relics, 'relic_voyager');
+    const relicGlobalMult = voyagerLevel > 0 ? (1 + getRelicEffect('relic_voyager', voyagerLevel)) : 1.0;
     const streakMult = 1 + (Math.min(streak, 10) * 0.05);
     const focusBurstMult = focusBurstTime > 0 ? 2.0 : 1.0;
-    const totalGlobalMult = globalMultiplier * expGlobalMult * streakMult * focusBurstMult;
+
+    const evolutionSatedBonus = [1.5, 1.6, 1.75, 2.0][constructEvolution] || 1.5;
+    const constructSatiationMult = constructSatiation >= 10 ? evolutionSatedBonus : 1;
 
     // Total Fragments Per Sec for UI
-    const baseFPS = GENERATORS.reduce((sum, g) => sum + (generatorsArray[g.key] || 0) * g.production, 0);
-    const fragmentsPerSec = baseFPS * totalGlobalMult * frenzyMultiplier * epiphanyMult * enlightenMult;
+    const fragmentsPerSec = getCalcFragmentsPerSec(stateRef.current) * frenzyMultiplier;
 
     // ─── Prestige ────────────────────────────────────────────
     const canPrestige = (generatorsArray.singularities || 0) >= 1;
@@ -683,8 +811,14 @@ export function useGameState() {
 
     // ─── Actions ─────────────────────────────────────────────
     const handleManualClick = () => {
-        const expGlobalMult = completedExpeditions.some(id => id === 'exp_voyager') ? 1.5 : 1.0;
-        const amount = baseClick * globalMultiplier * expGlobalMult * frenzyMultiplier * epiphanyMult * enlightenMult;
+        const voyagerLevel = getRelicLevel(relics, 'relic_voyager');
+        const relicGlobalMult = voyagerLevel > 0 ? (1 + getRelicEffect('relic_voyager', voyagerLevel)) : 1.0;
+        const evolutionClickMult = [1, 1.1, 1.25, 1.5][constructEvolution] || 1;
+
+        const evolutionSatedBonus = [1.5, 1.6, 1.75, 2.0][constructEvolution] || 1.5;
+        const constructSatiationMult = constructSatiation >= 10 ? evolutionSatedBonus : 1;
+
+        const amount = baseClick * globalMultiplier * relicGlobalMult * frenzyMultiplier * epiphanyMult * enlightenMult * evolutionClickMult * constructSatiationMult;
         setFragments(prev => prev + amount);
         setTotalFragmentsEarned(prev => prev + amount);
         setTotalClicks(prev => prev + 1);
@@ -694,11 +828,23 @@ export function useGameState() {
 
     const buyGenerator = (key) => {
         const gen = GENERATORS.find(g => g.key === key);
-        if (!gen) return;
-        const cost = calcGeneratorCost(gen.baseCost, generatorsArray[key] || 0, discountMult);
-        if (fragments >= cost) {
-            setFragments(p => p - cost);
-            setGeneratorsArray(prev => ({ ...prev, [key]: (prev[key] || 0) + 1 }));
+        if (gen) {
+            const cost = calcGeneratorCost(gen.baseCost, generatorsArray[key] || 0, discountMult);
+            if (fragments >= cost) {
+                setFragments(p => p - cost);
+                setGeneratorsArray(prev => ({ ...prev, [key]: (prev[key] || 0) + 1 }));
+            }
+            return;
+        }
+
+        const sup = SUPPORT_NODES.find(s => s.key === key);
+        if (sup) {
+            const cost = sup.baseCost; // Support nodes have fixed cost for now
+            if (fragments >= cost && !supportNodesArray[key]) {
+                setFragments(p => p - cost);
+                setSupportNodesArray(prev => ({ ...prev, [key]: 1 }));
+            }
+            return;
         }
     };
 
@@ -722,6 +868,49 @@ export function useGameState() {
             setTotalFragmentsEarned(prev => prev + burst);
             // setInsightBurstCost(prev => Math.floor(prev * 1.5)); // This state variable doesn't exist
             saveNow();
+        }
+    };
+
+    const handleBuyConsumable = (buffId) => {
+        const item = CONSUMABLES[buffId];
+        if (!item) return;
+
+        let canAfford = false;
+        if (item.costType === 'spark' && claritySparks >= item.cost) canAfford = true;
+        if (item.costType === 'shard' && focusShards >= item.cost) canAfford = true;
+        if (item.costType === 'core' && resilienceCores >= item.cost) canAfford = true;
+
+        if (canAfford) {
+            if (item.costType === 'spark') setClaritySparks(p => p - item.cost);
+            if (item.costType === 'shard') setFocusShards(p => p - item.cost);
+            if (item.costType === 'core') setResilienceCores(p => p - item.cost);
+
+            setActiveBuffs(prev => ({
+                ...prev,
+                [buffId]: Date.now() + item.duration
+            }));
+            saveNow();
+        }
+    };
+
+    const handleForgeRelic = (relicId, level) => {
+        const cost = 100; // 100 Shards to upgrade
+        const duplicates = relics.filter(r => r.id === relicId && r.level === level);
+        if (duplicates.length >= 3 && focusShards >= cost) {
+            setFocusShards(prev => prev - cost);
+            setRelics(prev => {
+                const filtered = [];
+                let removedCount = 0;
+                for (const r of prev) {
+                    if (r.id === relicId && r.level === level && removedCount < 3) {
+                        removedCount++;
+                    } else {
+                        filtered.push(r);
+                    }
+                }
+                return [...filtered, { id: relicId, level: level + 1 }];
+            });
+            setTimeout(() => saveNow(), 100);
         }
     };
 
@@ -818,8 +1007,10 @@ export function useGameState() {
         // State
         isLoading, offlineReport, saveFlash, fragmentFlash, activeBanner,
         fragments, insightGems, claritySparks, focusShards, resilienceCores, clickPower, globalMultiplier, generatorsArray,
+        supportNodesArray,
         synergyLevel, discountLevel, fortuneLevel,
         frenzyStacks, epiphanies, totalResets, enlightenments,
+        constructSatiation, constructEvolution, constructGrowthPoints,
         totalCardsReviewed, totalFragmentsEarned, totalGemsEarned, totalClicks,
         era, pendingEraAdvance,
         activeExpeditionId, expeditionProgress, completedExpeditions,
@@ -831,6 +1022,7 @@ export function useGameState() {
         baseClick, fragmentsPerSec, canPrestige, canEnlighten, frenzyMultiplier, epiphanyMult, enlightenMult,
         // Actions
         handleManualClick, buyGenerator, buyClickPower, buyMultiplier, buySynergy, buyDiscount, buyFortune, buyInsightBurst,
-        handlePrestige, handleEnlighten, buyWithSave, handleAdvanceEra, handleStartExpedition
+        handlePrestige, handleEnlighten, buyWithSave, handleAdvanceEra, handleStartExpedition, handleForgeRelic, handleBuyConsumable,
+        activeBuffs
     };
 }

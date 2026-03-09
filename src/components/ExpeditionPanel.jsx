@@ -3,8 +3,9 @@ import { EXPEDITIONS } from '../data/expeditions';
 import { RELICS } from '../data/relics';
 import { formatNumber } from '../utils/format';
 
-export default function ExpeditionPanel({ activeId, progress, activeTarget, activeEndTime, completed, relics, onStart, era, fragments }) {
+export default function ExpeditionPanel({ activeId, progress, activeTarget, activeEndTime, completed, relics, onStart, era, fragments, focusShards, onForge }) {
     const activeExpedition = EXPEDITIONS.find(e => e.id === activeId);
+    const [activeTab, setActiveTab] = useState('missions');
 
     // Timer logic
     const [timeLeft, setTimeLeft] = useState('');
@@ -34,6 +35,23 @@ export default function ExpeditionPanel({ activeId, progress, activeTarget, acti
 
     return (
         <div className="flex flex-col h-full gap-3 overflow-hidden">
+            <div className="flex gap-1 mb-1">
+                <button
+                    onClick={() => setActiveTab('missions')}
+                    className={`flex-1 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all border ${activeTab === 'missions' ? 'bg-blue-600 text-white border-blue-400' : 'bg-slate-800 text-slate-500 border-slate-700'}`}
+                >
+                    Missions
+                </button>
+                <button
+                    onClick={() => setActiveTab('forge')}
+                    className={`flex-1 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all border ${activeTab === 'forge' ? 'bg-amber-600 text-white border-amber-400' : 'bg-slate-800 text-slate-500 border-slate-700'}`}
+                >
+                    Relic Forge
+                </button>
+            </div>
+
+            {activeTab === 'missions' ? (
+                <>
             {/* Active Expedition */}
             <div className="flex-shrink-0 bg-slate-800/50 rounded-2xl p-4 border border-slate-700/50">
                 <h3 className="text-[10px] sm:text-xs font-black uppercase text-slate-500 mb-3 tracking-widest">Ongoing Mission</h3>
@@ -120,6 +138,52 @@ export default function ExpeditionPanel({ activeId, progress, activeTarget, acti
                     );
                 })}
             </div>
+            </>
+            ) : (
+                <div className="flex-1 overflow-y-auto pr-1 space-y-3 scrollbar-thin">
+                    <h3 className="text-[10px] sm:text-xs font-black uppercase text-amber-500 px-1 tracking-widest">Relic Synthesis Forge</h3>
+                    <div className="bg-amber-900/10 border border-amber-900/30 p-3 rounded-xl mb-4">
+                        <p className="text-[10px] text-amber-200/70 font-medium leading-relaxed">
+                            Fuse 3 duplicate Level 1 relics + 100 Focus Shards to create a Level 2 relic with enhanced stats.
+                        </p>
+                    </div>
+
+                    {Object.values(RELICS).map(relicDef => {
+                        const ownedOfThis = (relics || []).filter(r => r.id === relicDef.id);
+                        if (ownedOfThis.length === 0) return null;
+
+                        // Group by level
+                        const levels = [...new Set(ownedOfThis.map(r => r.level))];
+
+                        return levels.map(lv => {
+                            const count = ownedOfThis.filter(r => r.level === lv).length;
+                            const canForge = count >= 3 && focusShards >= 100;
+
+                            return (
+                                <div key={`${relicDef.id}-${lv}`} className="p-3 bg-slate-800/50 rounded-xl border border-slate-700/50 flex items-center gap-3">
+                                    <div className="text-3xl">{relicDef.icon}</div>
+                                    <div className="flex-1">
+                                        <div className="text-xs font-black text-amber-400 uppercase tracking-tighter">
+                                            {relicDef.name} <span className="text-white bg-amber-600 px-1 rounded ml-1">LVL {lv}</span>
+                                        </div>
+                                        <div className="text-[9px] text-slate-400 mt-0.5">Owned: {count}</div>
+                                    </div>
+                                    <div className="flex flex-col items-end gap-1">
+                                        <div className="text-[10px] font-bold text-amber-500">Cost: 100 Shards</div>
+                                        <button
+                                            onClick={() => onForge(relicDef.id, lv)}
+                                            disabled={!canForge}
+                                            className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase transition-all ${!canForge ? 'bg-slate-700 text-slate-500 cursor-not-allowed' : 'bg-amber-500 text-black hover:bg-amber-400 shadow-[0_0_10px_rgba(245,158,11,0.3)] active:scale-95'}`}
+                                        >
+                                            Fuse 3x
+                                        </button>
+                                    </div>
+                                </div>
+                            );
+                        });
+                    })}
+                </div>
+            )}
         </div>
     );
 }
