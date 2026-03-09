@@ -17,6 +17,7 @@ import ExpeditionPanel from './components/ExpeditionPanel';
 import ResourcePanel from './components/ResourcePanel';
 import ThoughtConstruct from './components/ThoughtConstruct';
 import NeuralMap from './components/NeuralMap';
+import MemoryMarket from './components/MemoryMarket';
 
 export default function App() {
     const state = useGameState();
@@ -127,7 +128,11 @@ export default function App() {
                 fragmentFlash={state.fragmentFlash}
             />
 
-            <ThoughtConstruct satiation={state.constructSatiation} />
+            <ThoughtConstruct
+                satiation={state.constructSatiation}
+                evolution={state.constructEvolution}
+                growthPoints={state.constructGrowthPoints}
+            />
 
             <div className="space-y-1 mb-2">
                 <FrenzyBar stacks={state.frenzyStacks} />
@@ -188,11 +193,17 @@ export default function App() {
                 >
                     Expeditions
                 </button>
+                <button
+                    onClick={() => setActiveTab('market')}
+                    className={`flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border ${activeTab === 'market' ? 'bg-white text-black border-white shadow-[0_0_15px_rgba(255,255,255,0.2)]' : 'bg-slate-900/50 text-slate-500 border-slate-800 hover:text-slate-300'}`}
+                >
+                    Market
+                </button>
             </div>
 
             {/* Content Area */}
             <div className={`bg-slate-900/80 backdrop-blur border ${currentEra.borderColor} rounded-2xl p-2 flex-1 flex flex-col min-h-0`}>
-                {activeTab === 'upgrades' ? (
+                {activeTab === 'upgrades' && (
                     <>
                         <h3 className="text-[10px] sm:text-xs font-black uppercase text-slate-500 mb-1 sm:mb-2 px-1 tracking-wider flex-shrink-0">Upgrades & Automation</h3>
 
@@ -200,7 +211,9 @@ export default function App() {
                             <NeuralMap
                                 fragments={state.fragments}
                                 ownedGenerators={state.generatorsArray}
+                                ownedSupportNodes={state.supportNodesArray}
                                 onBuyGenerator={state.buyWithSave((key) => state.buyGenerator(key))}
+                                discountMult={state.discountMult}
                             />
                         </div>
 
@@ -236,7 +249,9 @@ export default function App() {
                             )}
                         </div>
                     </>
-                ) : (
+                )}
+
+                {activeTab === 'expeditions' && (
                     <ExpeditionPanel
                         activeId={state.activeExpeditionId}
                         progress={state.expeditionProgress}
@@ -245,8 +260,20 @@ export default function App() {
                         completed={state.completedExpeditions}
                         relics={state.relics}
                         fragments={state.fragments}
+                        focusShards={state.focusShards}
                         onStart={state.handleStartExpedition}
+                        onForge={state.handleForgeRelic}
                         era={state.era}
+                    />
+                )}
+
+                {activeTab === 'market' && (
+                    <MemoryMarket
+                        sparks={state.claritySparks}
+                        shards={state.focusShards}
+                        cores={state.resilienceCores}
+                        activeBuffs={state.activeBuffs}
+                        onBuy={state.handleBuyConsumable}
                     />
                 )}
             </div>

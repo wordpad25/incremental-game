@@ -1,9 +1,9 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { formatNumber } from '../utils/format';
-import { GENERATORS } from '../data/generators';
+import { GENERATORS, SUPPORT_NODES, calcGeneratorCost } from '../data/generators';
 import { NEURAL_NODES } from '../data/nodes';
 
-export default function NeuralMap({ fragments, ownedGenerators, onBuyGenerator }) {
+export default function NeuralMap({ fragments, ownedGenerators, ownedSupportNodes, onBuyGenerator, discountMult }) {
     const containerRef = useRef(null);
     const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 });
     const isDragging = useRef(false);
@@ -54,10 +54,19 @@ export default function NeuralMap({ fragments, ownedGenerators, onBuyGenerator }
         if (!node.required || node.required.length === 0) return true;
         // Node is unlocked if player owns at least 1 of EVERY required generator
         return node.required.every(reqId => {
-            const reqKey = reqId.replace('gen_', '').toLowerCase();
-            const requiredGen = GENERATORS.find(g => g.key.toLowerCase() === reqKey);
-            if (!requiredGen) return false;
-            return (ownedGenerators[requiredGen.key] || 0) > 0;
+            if (reqId.startsWith('gen_')) {
+                const reqKey = reqId.replace('gen_', '').toLowerCase();
+                const requiredGen = GENERATORS.find(g => g.key.toLowerCase() === reqKey);
+                if (!requiredGen) return false;
+                return (ownedGenerators[requiredGen.key] || 0) > 0;
+            }
+            if (reqId.startsWith('sup_')) {
+                const reqKey = reqId.replace('sup_', '').toLowerCase();
+                const requiredSup = SUPPORT_NODES.find(s => s.key.toLowerCase() === reqKey);
+                if (!requiredSup) return false;
+                return (ownedSupportNodes[requiredSup.key] || 0) > 0;
+            }
+            return false;
         });
     };
 
@@ -107,15 +116,35 @@ export default function NeuralMap({ fragments, ownedGenerators, onBuyGenerator }
 
                 {/* Render Nodes */}
                 {NEURAL_NODES.map(node => {
-                    // Match gen_name format back to the GENERATORS key
-                    const genKey = node.id.replace('gen_', '').toLowerCase();
-                    const generator = GENERATORS.find(g => g.key.toLowerCase() === genKey);
+                    let item = null;
+                    let owned = 0;
+                    let cost = 0;
+                    let icon = '';
+                    let key = '';
 
-                    if (!generator) return null;
+                    if (node.type === 'generator') {
+                        key = node.id.replace('gen_', '').toLowerCase();
+                        item = GENERATORS.find(g => g.key.toLowerCase() === key);
+                        if (item) {
+                            owned = ownedGenerators[item.key] || 0;
+                            cost = calcGeneratorCost(item.baseCost, owned, discountMult);
+                            icon = item.icon;
+                            key = item.key;
+                        }
+                    } else if (node.type === 'support') {
+                        key = node.id.replace('sup_', '').toLowerCase();
+                        item = SUPPORT_NODES.find(s => s.key.toLowerCase() === key);
+                        if (item) {
+                            owned = ownedSupportNodes[item.key] || 0;
+                            cost = item.baseCost;
+                            icon = item.icon;
+                            key = item.key;
+                        }
+                    }
 
-                    const owned = ownedGenerators[generator.key] || 0;
-                    const cost = Math.floor(generator.baseCost * Math.pow(generator.costMultiplier, owned));
-                    const canAfford = fragments >= cost;
+                    if (!item) return null;
+
+                    const canAfford = fragments >= cost && (node.type === 'generator' || owned === 0);
                     const unlocked = isNodeUnlocked(node);
 
                     if (!unlocked && owned === 0) {
@@ -138,10 +167,10 @@ export default function NeuralMap({ fragments, ownedGenerators, onBuyGenerator }
                             style={{ left: node.x + 40, top: node.y + 40 }}
                             onClick={(e) => {
                                 e.stopPropagation();
-                                if (canAfford) onBuyGenerator(generator.key);
+                                if (canAfford) onBuyGenerator(key);
                             }}
                         >
-                            <div className="text-2xl mb-1">{generator.icon}</div>
+                            <div className="text-2xl mb-1">{icon}</div>
                             {owned > 0 && (
                                 <div className="absolute -top-2 -right-2 bg-sky-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full z-10">
                                     {owned}
